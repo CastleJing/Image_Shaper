@@ -207,6 +207,8 @@
     <Compile Include="UC_Palette.designer.cs">
       <DependentUpon>UC_Palette.cs</DependentUpon>
     </Compile>
+    <Compile Include="IniCache.cs" />
+    <Compile Include="IniFile.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="ImgSHP_icon.ico" />

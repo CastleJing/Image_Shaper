@@ -8,27 +8,7 @@ using System.Drawing;
 
 public static class Cinimanager
 {
-    [DllImport("KERNEL32.DLL", EntryPoint = "GetPrivateProfileStringW",
-      SetLastError = true,
-      CharSet = CharSet.Unicode, ExactSpelling = true,
-      CallingConvention = CallingConvention.StdCall)]
-    private static extern int GetPrivateProfileString(
-        string lpAppName,
-        string lpKeyName,
-        string lpDefault,
-        string lpReturnString,
-        int nSize,
-        string lpFilename);
-
-    [DllImport("KERNEL32.DLL", EntryPoint = "WritePrivateProfileStringW",
-      SetLastError = true,
-      CharSet = CharSet.Unicode, ExactSpelling = true,
-      CallingConvention = CallingConvention.StdCall)]
-    private static extern int WritePrivateProfileString(
-        string lpAppName,
-        string lpKeyName,
-        string lpString,
-        string lpFilename);
+    static IniCache _inis = new IniCache();
 
     public struct TSETTINGS
     {
@@ -66,44 +46,37 @@ public static class Cinimanager
 
     private static void IniWriteValue(string Section, string Key, string Value)
     {
-        WritePrivateProfileString(Section, Key, Value, inifilename);
+        var ini = _inis.GetOrOpenOrCreate(inifilename);
+        ini.GetOrAddSection(Section).Add(Key, Value);
+        _inis.Save(inifilename);
     }
 
     private static string GetIniFileString(string inifilename, string category, string key, string defaultValue)
     {
-        string returnString = new string(' ', 1024);
-        GetPrivateProfileString(category, key, defaultValue, returnString, 1024, inifilename);
-        return returnString.Split('\0')[0];
+        var section = _inis.GetOrOpenOrCreate(inifilename).GetSection(category);
+        return section.GetValue(key, defaultValue);
     }
 
     private static List<string> GetSections(string inifilename)
     {
-        string returnString = new string(' ', 65536);
-        GetPrivateProfileString(null, null, null, returnString, 65536, inifilename);
-        char[] sep = { '\0' };
-        List<string> result = new List<string>(returnString.Split(sep));
-        result.RemoveRange(result.Count - 2, 2);
-        return result;
+        return _inis.GetOrOpenOrCreate(inifilename).SectionNames.ToList();
     }
 
     private static void RemoveIniSection(string sectionname, string filename)
     {
-        WritePrivateProfileString(sectionname, null, null, filename);
+        _inis.GetOrOpenOrCreate(filename).RemoveSection(sectionname);
     }
 
     private static List<string> GetKeys(string inifilename, string category)
     {
-        string returnString = new string(' ', 32768);
-        GetPrivateProfileString(category, null, null, returnString, 32768, inifilename);
-        List<string> result = new List<string>(returnString.Split('\0'));
-        result.RemoveRange(result.Count() - 2, 2);
-        return result;
+        return _inis.GetOrOpenOrCreate(inifilename).GetSection(category).Keys.ToList();
     }
 
     public static int ClearIniFile(string filename)
     {
         if (System.IO.File.Exists(filename))
         {
+            _inis.Close(filename);
             System.IO.File.Delete(filename);
             return 0;
         }
@@ -112,33 +85,36 @@ public static class Cinimanager
 
     public static int SaveIniSettings()
     {
-        WritePrivateProfileString("General", "X_StartPosition", inisettings.StartPosition.X.ToString(), inifilename);
-        WritePrivateProfileString("General", "Y_StartPosition", inisettings.StartPosition.Y.ToString(), inifilename);
-        WritePrivateProfileString("General", "StartWidth", inisettings.StartSize.Width.ToString(), inifilename);
-        WritePrivateProfileString("General", "StartHeight", inisettings.StartSize.Height.ToString(), inifilename);
-        WritePrivateProfileString("General", "DefaultCompression", inisettings.DefaultCompression.ToString(), inifilename);
-        WritePrivateProfileString("General", "ShowPreview", inisettings.ShowPreview.ToString(), inifilename);
-        WritePrivateProfileString("General", "LastPalette", inisettings.LastPalette, inifilename);
+        var section = _inis.GetOrOpenOrCreate(inifilename).GetOrAddSection("General");
+        section.Add("X_StartPosition", inisettings.StartPosition.X.ToString());
+        section.Add("Y_StartPosition", inisettings.StartPosition.Y.ToString());
+        section.Add("StartWidth", inisettings.StartSize.Width.ToString());
+        section.Add("StartHeight", inisettings.StartSize.Height.ToString());
+        section.Add("DefaultCompression", inisettings.DefaultCompression.ToString());
+        section.Add("ShowPreview", inisettings.ShowPreview.ToString());
+        section.Add("LastPalette", inisettings.LastPalette);
 
-        WritePrivateProfileString("General", "CreateImages", inisettings.CreateImages.ToString(), inifilename);
-        WritePrivateProfileString("General", "CreateImages_FileName", inisettings.CreateImages_FileName, inifilename);
-        WritePrivateProfileString("General", "CreateImages_Format", inisettings.CreateImages_Format, inifilename);
-        WritePrivateProfileString("General", "PreventTSWobbleBug", inisettings.PreventTSWobbleBug.ToString(), inifilename);
+        section.Add("CreateImages", inisettings.CreateImages.ToString());
+        section.Add("CreateImages_FileName", inisettings.CreateImages_FileName);
+        section.Add("CreateImages_Format", inisettings.CreateImages_Format);
+        section.Add("PreventTSWobbleBug", inisettings.PreventTSWobbleBug.ToString());
 
-        WritePrivateProfileString("General", "OptimizeCanvas", inisettings.OptimizeCanvas.ToString(), inifilename);
-        WritePrivateProfileString("General", "KeepCentered", inisettings.KeepCentered.ToString(), inifilename);
+        section.Add("OptimizeCanvas", inisettings.OptimizeCanvas.ToString());
+        section.Add("KeepCentered", inisettings.KeepCentered.ToString());
 
-        WritePrivateProfileString("General", "RadarColor", ColorToStr(inisettings.RadarColor, true), inifilename);
-        WritePrivateProfileString("General", "AverageRadarColor", inisettings.AverageRadarColor.ToString(), inifilename);
+        section.Add("RadarColor", ColorToStr(inisettings.RadarColor, true));
+        section.Add("AverageRadarColor", inisettings.AverageRadarColor.ToString());
 
-        WritePrivateProfileString("General", "UseCustomBackgroundColor", inisettings.UseCustomBackgroundColor.ToString(), inifilename);
-        WritePrivateProfileString("General", "CustomBackgroundColor", ColorToStr(inisettings.CustomBackgroundColor, true), inifilename);
-        WritePrivateProfileString("General", "CombineTransparentPixel", inisettings.CombineTransparentPixel.ToString(), inifilename);
+        section.Add("UseCustomBackgroundColor", inisettings.UseCustomBackgroundColor.ToString());
+        section.Add("CustomBackgroundColor", ColorToStr(inisettings.CustomBackgroundColor, true));
+        section.Add("CombineTransparentPixel", inisettings.CombineTransparentPixel.ToString());
 
-        WritePrivateProfileString("General", "OutputFolder", inisettings.OutputFolder, inifilename);
-        WritePrivateProfileString("General", "PreviewBackgroundImage", inisettings.PreviewBackgroundImage, inifilename);
+        section.Add("OutputFolder", inisettings.OutputFolder);
+        section.Add("PreviewBackgroundImage", inisettings.PreviewBackgroundImage);
 
-        WritePrivateProfileString("General", "LastFireFLHFinderDirectory", inisettings.LastFireFLHFinderDirectory, inifilename);
+        section.Add("LastFireFLHFinderDirectory", inisettings.LastFireFLHFinderDirectory);
+        
+        _inis.Save(inifilename);
         
         if (System.IO.File.Exists(inifilename))
         {
@@ -254,14 +230,17 @@ public static class Cinimanager
 
     internal static void SavePaletteSetup(string filename, CPalette[] Palettes)
     {
+        var ini = _inis.GetOrOpenOrCreate(filename);
         for (int i = 0; i < Palettes.Length; i++)
         {
-            WritePrivateProfileString("Palette" + i.ToString("D5"), "PaletteFile", Palettes[i].PaletteFile, filename);
-            WritePrivateProfileString("Palette" + i.ToString("D5"), "ConversionMethod", ((int)Palettes[i].ConversionMethod).ToString(), filename);
-            WritePrivateProfileString("Palette" + i.ToString("D5"), "PaletteName", Palettes[i].PaletteName.ToString(), filename);
+            var section = ini.GetOrAddSection("Palette" + i.ToString("D5"));
+            section.Add("PaletteFile", Palettes[i].PaletteFile);
+            section.Add("ConversionMethod", ((int)Palettes[i].ConversionMethod).ToString());
+            section.Add("PaletteName", Palettes[i].PaletteName.ToString());
             for (int c = 0; c < Palettes[i].palette.Length; c++)
-                WritePrivateProfileString("Palette" + i.ToString("D5"), "Color" + c.ToString("D3"), Palettes[i].palette[c].IsUsed.ToString() + "|" + Palettes[i].palette[c].MakeTransparent.ToString(), filename);
+                section.Add("Color" + c.ToString("D3"), Palettes[i].palette[c].IsUsed.ToString() + "|" + Palettes[i].palette[c].MakeTransparent.ToString());
         }
+        _inis.Save(filename);
     }
     internal static CPalette[] LoadPaletteSetup(string filename)
     {
@@ -310,23 +289,26 @@ public static class Cinimanager
     {
         SavePaletteSetup(filename, Palettes);
 
+        var ini = _inis.GetOrOpenOrCreate(filename);
+
         for (int i=0;i<Cells.Length;i++)
         {
+            var cell = ini.GetOrAddSection("Cell" + i.ToString("D5"));
             CImageFile imf = (CImageFile)Cells[i].Value;
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "ColumnIndex", Cells[i].ColumnIndex.ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "RowIndex", Cells[i].RowIndex.ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "FileName", imf.FileName, filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "BitFlags", ((int)imf.BitFlags).ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "CompressionFormat", ((int)imf.CompressionFormat).ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "UseCustomBackgroundColor", imf.UseCustomBackgroundColor.ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "CustomBackgroundColor", Color2String(imf.CustomBackgroundColor), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "PaletteIndex", imf.PaletteIndex.ToString(), filename);
-            //WritePrivateProfileString("Cell" + i.ToString("D5"), "PaletteName", imf.PaletteName.ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "IsSHP", imf.IsSHP.ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "SHPFrameNr", imf.SHPFrameNr.ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "RadarColor", Color2String(imf.RadarColor), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "RadarColorAverage", imf.RadarColorAverage.ToString(), filename);
-            WritePrivateProfileString("Cell" + i.ToString("D5"), "CombineTransparentPixel", imf.CombineTransparentPixel.ToString(), filename);
+            cell.Add("ColumnIndex", Cells[i].ColumnIndex.ToString());
+            cell.Add("RowIndex", Cells[i].RowIndex.ToString());
+            cell.Add("FileName", imf.FileName);
+            cell.Add("BitFlags", ((int)imf.BitFlags).ToString());
+            cell.Add("CompressionFormat", ((int)imf.CompressionFormat).ToString());
+            cell.Add("UseCustomBackgroundColor", imf.UseCustomBackgroundColor.ToString());
+            cell.Add("CustomBackgroundColor", Color2String(imf.CustomBackgroundColor));
+            cell.Add("PaletteIndex", imf.PaletteIndex.ToString());
+            //cell.Add("PaletteName", imf.PaletteName.ToString());
+            cell.Add("IsSHP", imf.IsSHP.ToString());
+            cell.Add("SHPFrameNr", imf.SHPFrameNr.ToString());
+            cell.Add("RadarColor", Color2String(imf.RadarColor));
+            cell.Add("RadarColorAverage", imf.RadarColorAverage.ToString());
+            cell.Add("CombineTransparentPixel", imf.CombineTransparentPixel.ToString());
         }
     }
 
